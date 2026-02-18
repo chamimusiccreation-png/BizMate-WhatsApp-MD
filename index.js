@@ -257,12 +257,28 @@ async function startBot() {
 
     sock.ev.removeAllListeners('messages.upsert');
         
-    sock.ev.on('messages.upsert', async ({ messages }) => {
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
     try {
-        let msg = messages[0];
-        if (!msg.message) return;
+        // 🛡️ 1. 'notify' (අලුත් මැසේජ්) නෙවෙයි නම් දැන්ම නවත්තන්න
+        if (type !== 'notify') return;
 
-        // 🛠️ FIX: Disappearing Messages (Ephemeral)
+        let msg = messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
+    
+        const msgId = msg.key.id;
+        if (processedMsgIds.has(msgId)) return; 
+        
+        processedMsgIds.add(msgId); 
+
+ 
+        if (processedMsgIds.size > 100) {
+            const firstEntry = processedMsgIds.values().next().value;
+            processedMsgIds.delete(firstEntry);
+        }
+
+        
+        // 🛠️ FIX: Disappearing Messages 
         if (msg.message.ephemeralMessage) {
             msg.message = msg.message.ephemeralMessage.message;
         }

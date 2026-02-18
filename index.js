@@ -246,10 +246,25 @@ async function startBot() {
 
     sock.ev.removeAllListeners('messages.upsert');
         
-    sock.ev.on('messages.upsert', async ({ messages }) => {
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
     try {
+        // 🛡️ 1. 'notify' (අලුත් මැසේජ්) නෙවෙයි නම් දැන්ම නවත්තන්න
+        if (type !== 'notify') return;
+
         let msg = messages[0];
-        if (!msg.message) return;
+        if (!msg.message || msg.key.fromMe) return;
+
+        // 🛡️ 2. එකම ID එක තියෙන මැසේජ් දෙපාරක් Process වෙන එක නවත්තන්න
+        const msgId = msg.key.id;
+        if (processedMsgIds.has(msgId)) return; // මේ ID එක කලින් ආවා නම් අතෑරලා දාන්න
+        
+        processedMsgIds.add(msgId); // අලුත් ID එක Set එකට දාගන්න
+
+        // 🛡️ 3. Memory එක පිරෙන එක නවත්තන්න පරණ ID අයින් කරන්න (ID 100කට වඩා තිබ්බොත්)
+        if (processedMsgIds.size > 100) {
+            const firstEntry = processedMsgIds.values().next().value;
+            processedMsgIds.delete(firstEntry);
+        }
 
         // 🛠️ FIX: Disappearing Messages 
         if (msg.message.ephemeralMessage) {

@@ -260,6 +260,9 @@ async function startBot() {
     sock.ev.on('messages.upsert', async (upsert) => {
     try {
         const { messages, type: eventType } = upsert; // 'type' එක 'eventType' විදිහට ගත්තා
+        console.log(`\n📥 [EVENT RECEIVED] Type: ${eventType} | ID: ${messages[0]?.key?.id}`);
+        
+        
 
     
         if (eventType !== 'notify') return;
@@ -269,7 +272,11 @@ async function startBot() {
 
         // 🛡️ 2. එකම ID එක තියෙන මැසේජ් දෙපාරක් Process වෙන එක නවත්තන්න
         const msgId = msg.key.id;
-        if (processedMsgIds.has(msgId)) return; 
+        if (processedMsgIds.has(msgId)) {
+        console.log(`⚠️ [DEDUPLICATED] Ignoring Message ID: ${msgId}`); // මේක වැටෙනවා නම් එකම process එකෙන් දෙපාරක් යන්න බෑ.
+        return; 
+        }
+        console.log(`✅ [NEW MESSAGE] Processing ID: ${msgId}`);
         
         processedMsgIds.add(msgId);
 
@@ -514,8 +521,11 @@ if (productSession[senderNum]) {
             try {
                 
                 await sock.sendPresenceUpdate('composing', from);
+                console.log(`🤖 [AI CALL] Asking AI for text: "${text.substring(0, 20)}..."`);
                 const aiReply = await getMachanResponse(senderNum, from, text, isGroup, sock);
+                console.log(`🤖 [AI RESPONSE] Received reply: "${aiReply?.substring(0, 20)}..."`);
                 if (aiReply) {
+                    console.log(`📤 [SENDING] Sending Message to ${from} (ID: ${msgId})`);
                     await sock.sendMessage(from, { text: aiReply }, { quoted: msg });
                 }
                 await sock.sendPresenceUpdate('paused', from);

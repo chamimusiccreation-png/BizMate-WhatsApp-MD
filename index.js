@@ -216,6 +216,8 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
+    let isRestarting = false;
+
     sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
     
@@ -225,15 +227,19 @@ async function startBot() {
         
         console.log(`Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
         
-        if (shouldReconnect) {
-
-            setTimeout(() => startBot(), 5000);
+        if (shouldReconnect && !isRestarting) {
+            isRestarting = true; // එකපාරකට වඩා restart වීම වලක්වයි
+            console.log("♻️ Reconnecting in 5s...");
+            setTimeout(async () => {
+                await startBot();
+                isRestarting = false;
+            }, 5000);
         }
     } else if (connection === 'open') {
+        isRestarting = false; // සාර්ථකව කනෙක්ට් වුණාම reset කරනවා
         console.log('✅ Bot Connected successfully!');
     }
 });
-
     // 📩 MESSAGE HANDLER (FIXED)
     const saveSettings = async () => {
         try {

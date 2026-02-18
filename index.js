@@ -49,7 +49,7 @@ const globalDataSchema = new mongoose.Schema({
     settings: Object
 });
 const GlobalData = mongoose.model('GlobalData', globalDataSchema);
-
+const lastMsgTime = {};
 const processedMsgIds = new Set();
 let sock; 
 const msgRetryCounter = new Set();
@@ -259,28 +259,35 @@ async function startBot() {
         
     sock.ev.on('messages.upsert', async (upsert) => {
     try {
-        const { messages, type: eventType } = upsert; // 'type' එක 'eventType' විදිහට ගත්තා
+        const { messages, type: eventType } = upsert;
         console.log(`\n📥 [EVENT RECEIVED] Type: ${eventType} | ID: ${messages[0]?.key?.id}`);
         
-        
-
-    
         if (eventType !== 'notify') return;
 
         let msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        // 🛡️ 2. එකම ID එක තියෙන මැසේජ් දෙපාරක් Process වෙන එක නවත්තන්න
+        const from = msg.key.remoteJid;
         const msgId = msg.key.id;
+
+        // 🛡️ 1. ID එකෙන් චෙක් කිරීම (Original Deduplication)
         if (processedMsgIds.has(msgId)) {
-        console.log(`⚠️ [DEDUPLICATED] Ignoring Message ID: ${msgId}`); // මේක වැටෙනවා නම් එකම process එකෙන් දෙපාරක් යන්න බෑ.
-        return; 
+            console.log(`⚠️ [DEDUPLICATED] Ignoring Message ID: ${msgId}`);
+            return; 
         }
-        console.log(`✅ [NEW MESSAGE] Processing ID: ${msgId}`);
         
+        // 🛡️ 2. TIME-BASED GUARD (LID හොල්මන පන්නන්න)
+        // එකම කෙනාගෙන් තත්පර 2ක් ඇතුළත මැසේජ් එකක් ආවොත් ඒක ignore කරනවා (ID එක වෙනස් වුණත්)
+        const now = Date.now();
+        if (lastMsgTime[from] && (now - lastMsgTime[from] < 2000)) {
+            console.log(`🚫 [COOLDOWN] Ignoring fast duplicate from: ${from}`);
+            return;
+        }
+        lastMsgTime[from] = now; // අන්තිමට මැසේජ් එකක් ආපු වෙලාව සටහන් කරගන්නවා
+
+        console.log(`✅ [NEW MESSAGE] Processing ID: ${msgId}`);
         processedMsgIds.add(msgId);
 
-        // 🛡️ 3. Memory එක පිරෙන එක නවත්තන්න පරණ ID අයින් කරන්න
         if (processedMsgIds.size > 100) {
             const firstEntry = processedMsgIds.values().next().value;
             processedMsgIds.delete(firstEntry);
@@ -291,6 +298,17 @@ async function startBot() {
             msg.message = msg.message.ephemeralMessage.message;
         }
 
+        // --- මෙතනදී ටෙක්ස්ට් එක කලින්ම ගමු 'Empty' ද බලන්න ---
+        const type = Object.keys(msg.message)[0];
+        const text = (type === 'conversation' ? msg.message.conversation :
+                     type === 'extendedTextMessage' ? msg.message.extendedTextMessage.text :
+                     type === 'imageMessage' ? msg.message.imageMessage.caption : '') || '';
+
+        // 🛡️ 3. EMPTY TEXT GUARD (ලොග් එකේ තිබ්බ හිස් මැසේජ් එක නවත්තන්න)
+        if (!text || text.trim().length === 0) {
+            console.log(`🚫 [EMPTY IGNORED] Message body is empty.`);
+            return;
+        }
         // ============================================================
         // 🟢 1. AUTO STATUS VIEW & REACT (Status ආවොත් මෙතනින් ඉවරයි)
         // ============================================================
